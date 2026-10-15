@@ -298,7 +298,7 @@ async function readByVision(lp: LP, bytes: Uint8Array, pageNums: number[], into:
 }
 
 /**
- * Page readers (LlamaParse always, a vision model sometimes) write tables as
+ * Page readers (the careful reader and the vision model) write tables as
  * HTML inside their Markdown; the block parser reads pipe tables. Each <table> becomes one, a merged cell repeated across the
  * columns it spans so the columns stay aligned.
  */

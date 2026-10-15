@@ -1,23 +1,20 @@
 import { createHash } from "node:crypto";
 import { db } from "@/lib/db";
-import { parseCarefully, type Tier } from "@/lib/llamaparse";
+import { parseCarefully } from "@/lib/datalab";
 import { APP_UA } from "@/lib/together";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 /**
- * "Read it more carefully": a PDF read again by LlamaParse, for layouts the
- * free reader gets wrong. It runs on Gloss's LlamaParse key, but only for
+ * "Read it more carefully": a PDF read again by Datalab, for layouts the
+ * free reader gets wrong. It runs on Gloss's Datalab key, but only for
  * readers who have added their own Together key; they get a daily page cap.
  */
-// Agentic scored 8.1/10 against cost_effective's 6.9 in scripts/pdf-eval, at $0.0125 a page against $0.0037.
-const TIER: Tier = "agentic";
 /** Vercel refuses request bodies over 4.5MB. */
 const MAX_BYTES = 4_300_000;
 const MAX_PAGES = 60;
 const PAGES_PER_DAY = 200;
-const USD_PER_CREDIT = 0.00125;
 
 /** Keys checked recently, so a reader's second PDF does not wait on Together again. */
 const goodKeys = new Map<string, number>();
@@ -80,9 +77,9 @@ export async function POST(req: Request) {
   const used = await pagesToday(subject);
   if (used >= PAGES_PER_DAY) return Response.json({ error: `You've read ${PAGES_PER_DAY} pages carefully today. More tomorrow.` }, { status: 429 });
 
-  const result = await parseCarefully(file, { tier: TIER, maxPages: Math.min(MAX_PAGES, PAGES_PER_DAY - used), signal: req.signal, deadlineMs: 270_000 });
+  const result = await parseCarefully(file, { maxPages: Math.min(MAX_PAGES, PAGES_PER_DAY - used), signal: req.signal, deadlineMs: 270_000 });
   if (!result.ok) return Response.json({ error: result.error }, { status: 502 });
-  await record(subject, result.pages.length, (result.credits ?? 0) * USD_PER_CREDIT);
+  await record(subject, result.pages.length, result.usd ?? 0);
   return Response.json({ pages: result.pages, truncated: result.pages.length >= MAX_PAGES });
 }
 

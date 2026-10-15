@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * "Read it more carefully": the PDF behind a text, read again by LlamaParse
+ * "Read it more carefully": the PDF behind a text, read again by Datalab
  * through /api/pdf-careful, for layouts the free reader gets wrong (columns,
  * tables, maths, scans). Needs the reader's own Together key.
  */
