@@ -39,7 +39,16 @@ export async function parseCarefully(pdf: Blob, opts: { maxPages: number; signal
     return { ok: false, error: "Could not reach the careful reader." };
   }
 
-  type Result = { status?: string; success?: boolean; markdown?: string | null; error?: string | null; cost_breakdown?: { final_cost_cents?: number | null } | null };
+  type Result = {
+    status?: string;
+    success?: boolean;
+    markdown?: string | null;
+    error?: string | null;
+    /** Set instead of inline content when the result is stored in another region (EU). */
+    result_url?: string | null;
+    metadata?: { failed_pages?: number[] | null } | null;
+    cost_breakdown?: { final_cost_cents?: number | null } | null;
+  };
   // Poll until done, the request is cancelled, or the function would run out of time.
   let done: Result | null = null;
   while (Date.now() - started < deadline) {
@@ -55,7 +64,22 @@ export async function parseCarefully(pdf: Blob, opts: { maxPages: number; signal
     if (s?.status === "failed") return { ok: false, error: s.error || "The careful reader could not read this file." };
   }
   if (!done) return { ok: false, error: "Reading carefully took too long. Try a shorter PDF." };
+
+  if (done.result_url) {
+    // A signed link, so no API key; bounded by what is left of the deadline.
+    const left = deadline - (Date.now() - started);
+    const signal = opts.signal ? AbortSignal.any([opts.signal, AbortSignal.timeout(left)]) : AbortSignal.timeout(left);
+    const stored = (await fetch(done.result_url, { signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null)) as Result | null;
+    if (!stored) return { ok: false, error: opts.signal?.aborted ? "Stopped." : "Could not download the careful reading." };
+    // The polling reply's own fields (billing above all) are the current ones.
+    done = { ...stored, ...Object.fromEntries(Object.entries(done).filter(([, v]) => v != null && v !== "")) };
+  }
   if (done.success === false) return { ok: false, error: done.error || "The careful reader could not read this file." };
+  // A reading with pages missing would silently drop them from the text it replaces.
+  const failed = done.metadata?.failed_pages ?? [];
+  if (failed.length) return { ok: false, error: `The careful reader could not read ${failed.length === 1 ? "page" : "pages"} ${failed.map((p) => p + 1).join(", ")}. The text is unchanged.` };
 
   const parts = (done.markdown ?? "").split(PAGE_BREAK);
   // The delimiter opens every page, so the text before the first one is empty.

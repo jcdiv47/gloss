@@ -77,10 +77,14 @@ export async function POST(req: Request) {
   const used = await pagesToday(subject);
   if (used >= PAGES_PER_DAY) return Response.json({ error: `You've read ${PAGES_PER_DAY} pages carefully today. More tomorrow.` }, { status: 429 });
 
-  const result = await parseCarefully(file, { maxPages: Math.min(MAX_PAGES, PAGES_PER_DAY - used), signal: req.signal, deadlineMs: 270_000 });
+  // Datalab stops at the cap without saying whether pages were left, so a reading that reaches it may be cut short.
+  const cap = Math.min(MAX_PAGES, PAGES_PER_DAY - used);
+  const result = await parseCarefully(file, { maxPages: cap, signal: req.signal, deadlineMs: 270_000 });
   if (!result.ok) return Response.json({ error: result.error }, { status: 502 });
   await record(subject, result.pages.length, result.usd ?? 0);
-  return Response.json({ pages: result.pages, truncated: result.pages.length >= MAX_PAGES });
+  const truncated = result.pages.length >= cap;
+  if (truncated && cap < MAX_PAGES) return Response.json({ error: `You had ${cap} pages left to read carefully today, and this PDF needs more. More tomorrow.` }, { status: 429 });
+  return Response.json({ pages: result.pages, truncated });
 }
 
 function tooLarge() {
